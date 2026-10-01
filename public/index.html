@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
+
   <script>
   // usernode-dev-console@1
   (function () {
@@ -65,130 +65,380 @@
   </script>
   <title>Community Treasury</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%237c3aed'/><circle cx='50' cy='50' r='18' fill='white'/></svg>">
-  <!-- Tailwind, PRECOMPILED for this app (was cdn.tailwindcss.com's
-       in-browser engine plus an inline tailwind.config here). The config
-       moved to tailwind.config.js in the repo root; npm run build compiles
-       it to public/tailwind.css with Docker or Paketo on every image build, so the
-       stylesheet is regenerated from THIS commit's markup every deploy and
-       can never drift behind the code. ~7 KB of CSS instead of a ~400 KB
-       engine, and no flash of unstyled content.
-       Writing class names as whole literals is what keeps this working — a
-       class assembled from fragments at runtime (e.g. "bg-" + tone + "-500")
-       is invisible to the compiler. If you genuinely need runtime-generated
-       classes, swap this link for the platform-hosted engine instead:
-       <script src="/usernode-tailwind/v1/tailwind.js"></script> -->
+  <!-- Tailwind, PRECOMPILED for this app. npm run build compiles
+       tailwind.config.js + styles/tailwind-input.css to public/tailwind.css
+       on every image build. Class names must be written as whole literals —
+       a class assembled from fragments at runtime is invisible to the
+       compiler and will not be styled. -->
   <link rel="stylesheet" href="/tailwind.css">
-  <!-- The platform bridge, centrally hosted and loaded by RELATIVE path (the
-       handler in server.js serves it under a plain "node server.js"; the
-       platform's edge answers it everywhere else). Never vendor it and never
-       write a hostname in front of it.
-       It is NOT conditional on this app calling a bridge API: it is also how
-       the app ANSWERS the shell, so a scaffold without it is invisible to
-       anything that asks the frame a question. Offline launch is one of those.
-       Another is the page's colour: the bridge reports this document's opaque
-       ground to the shell (#1581), which is what makes the platform bar above
-       the app take the app's tone instead of the viewer's theme (#1945). This
-       scaffold paints a dark page (bg-zinc-950 on the body element), so
-       without this tag a brand-new app sits under a light bar. -->
+  <!-- The platform bridge, centrally hosted and loaded by RELATIVE path.
+       Never vendor it and never write a hostname in front of it. -->
   <script src="/usernode-bridge/v1/bridge.js"></script>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen">
-  <main class="max-w-md mx-auto px-4 py-10 flex flex-col gap-6">
+  <main class="max-w-md mx-auto px-4 pb-24 pt-6">
 
-    <!-- usernode-starter-notice@1 — starter-template messaging. When building
-         the user's real app, replace this whole screen and delete this block,
-         both sentinel comments included. -->
-    <section class="rounded-2xl border border-violet-500/30 bg-gradient-to-b from-violet-600/20 to-transparent p-6 text-center flex flex-col items-center gap-3">
-      <span class="inline-block rounded-full bg-violet-600/20 text-violet-300 text-xs font-semibold uppercase tracking-wide px-3 py-1">Starter template</span>
-      <h1 class="text-2xl font-bold">Community Treasury</h1>
-      <p class="text-sm text-zinc-300 leading-relaxed">Welcome to your new app! Everything on this screen is placeholder content that came with it.</p>
-      <p class="text-sm text-zinc-300 leading-relaxed">Tap <strong class="text-violet-300 font-semibold">Improve</strong> in the header, describe what you'd like in plain English, and it will be turned into your real app.</p>
-    </section>
+    <!-- Home -->
+    <section id="view-home" class="hidden flex-col gap-6">
+      <h1 class="text-xl font-bold">Community Treasury</h1>
 
-    <section>
-      <h2 class="text-sm font-medium text-zinc-500 mb-2 px-1">What's already working</h2>
-      <div class="rounded-xl border border-zinc-800 bg-zinc-900/60 divide-y divide-zinc-800">
-        <div class="flex items-start gap-3 p-4">
-          <svg class="w-5 h-5 text-violet-400 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L9 11.6l6.3-6.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd"/></svg>
-          <div>
-            <p class="text-sm font-semibold text-zinc-100">Sign-in</p>
-            <p class="text-sm text-zinc-400">You're signed in through Homeroom automatically — no accounts to build.</p>
+      <div id="summary-error" class="hidden rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
+        Could not load the treasury. Try again in a moment.
+      </div>
+
+      <div id="summary-cards" class="hidden flex-col gap-6">
+        <div class="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
+          <p class="text-sm text-zinc-500">Balance</p>
+          <p id="balance" class="mt-1 text-3xl font-bold tracking-tight"></p>
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <div class="rounded-xl bg-zinc-800/60 p-3">
+              <p class="text-xs text-zinc-500">Money in this month</p>
+              <p id="month-in" class="mt-1 text-base font-semibold text-emerald-400"></p>
+            </div>
+            <div class="rounded-xl bg-zinc-800/60 p-3">
+              <p class="text-xs text-zinc-500">Money out this month</p>
+              <p id="month-out" class="mt-1 text-base font-semibold text-red-400"></p>
+            </div>
           </div>
         </div>
-        <div class="flex items-start gap-3 p-4">
-          <svg class="w-5 h-5 text-violet-400 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L9 11.6l6.3-6.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd"/></svg>
-          <div>
-            <p class="text-sm font-semibold text-zinc-100">Database</p>
-            <p class="text-sm text-zinc-400">Your app has its own private database, ready to store things.</p>
+
+        <div>
+          <div class="flex items-center justify-between mb-2 px-1">
+            <h2 class="text-sm font-medium text-zinc-500">Latest entries</h2>
+            <a href="#/history" class="text-sm text-violet-400 hover:text-violet-300">See all</a>
           </div>
-        </div>
-        <div class="flex items-start gap-3 p-4">
-          <svg class="w-5 h-5 text-violet-400 shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L9 11.6l6.3-6.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd"/></svg>
-          <div>
-            <p class="text-sm font-semibold text-zinc-100">Live API</p>
-            <p class="text-sm text-zinc-400">The example below talks to a real server — try it.</p>
+          <div id="latest-list" class="rounded-xl border border-zinc-800 bg-zinc-900/60 divide-y divide-zinc-800"></div>
+          <div id="home-empty" class="hidden rounded-xl border border-zinc-800 bg-zinc-900/60 p-8 text-center">
+            <p class="text-sm text-zinc-400">No entries yet. Record the first one to start the treasury.</p>
+            <a href="#/add" class="mt-4 inline-block rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2 text-sm font-semibold text-white">Add entry</a>
           </div>
         </div>
       </div>
     </section>
-    <!-- /usernode-starter-notice@1 -->
 
-    <section class="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 flex flex-col items-center gap-5">
-      <div class="w-full flex items-baseline justify-between gap-2">
-        <h2 class="text-sm font-medium text-zinc-500">Try the example</h2>
-        <span class="text-xs text-zinc-600">This example will be replaced</span>
-      </div>
+    <!-- Add entry -->
+    <section id="view-add" class="hidden flex-col gap-5">
+      <h1 class="text-xl font-bold">Add entry</h1>
 
-      <button id="press-btn" class="w-32 h-32 rounded-full bg-violet-600 hover:bg-violet-500 active:scale-95 transition-all text-white text-xl font-bold shadow-lg shadow-violet-600/30">
-        Press!
-      </button>
+      <form id="add-form" class="flex flex-col gap-4" novalidate>
+        <div>
+          <span class="mb-2 block text-sm font-medium text-zinc-400">Type</span>
+          <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Type">
+            <button type="button" id="kind-in" aria-pressed="true" class="rounded-lg px-3 py-2.5 text-sm font-semibold bg-violet-600 text-white">Money in</button>
+            <button type="button" id="kind-out" aria-pressed="false" class="rounded-lg px-3 py-2.5 text-sm font-semibold bg-zinc-800 text-zinc-300">Money out</button>
+          </div>
+        </div>
 
-      <div id="count" class="text-lg text-zinc-400">0 total presses</div>
+        <div>
+          <label for="amount" class="mb-2 block text-sm font-medium text-zinc-400">Amount</label>
+          <div class="relative">
+            <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+            <input id="amount" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required placeholder="0.00"
+              class="w-full rounded-lg border border-zinc-700 bg-zinc-900 py-2.5 pl-8 pr-3 text-base text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500">
+          </div>
+        </div>
 
-      <div class="w-full max-w-sm">
-        <h3 class="text-sm font-medium text-zinc-500 mb-2 text-center">Leaderboard</h3>
-        <div id="leaderboard" class="space-y-1"></div>
-      </div>
+        <div>
+          <label for="payer" class="mb-2 block text-sm font-medium text-zinc-400">Name</label>
+          <input id="payer" name="payer" type="text" maxlength="255" required placeholder="Who paid or was paid"
+            class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-base text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500">
+        </div>
+
+        <div>
+          <label for="note" class="mb-2 block text-sm font-medium text-zinc-400">Note <span class="text-zinc-600">(optional)</span></label>
+          <input id="note" name="note" type="text" maxlength="500" placeholder="What it was for"
+            class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-base text-zinc-100 placeholder-zinc-600 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500">
+        </div>
+
+        <p id="form-error" class="hidden text-sm text-red-400"></p>
+
+        <button type="submit" id="save-btn"
+          class="mt-1 rounded-lg bg-violet-600 hover:bg-violet-500 active:scale-[0.99] transition-colors px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+          Save entry
+        </button>
+      </form>
     </section>
 
-    <p class="text-center text-xs text-zinc-600">Built on Homeroom — this template screen disappears once you build your real app.</p>
+    <!-- History -->
+    <section id="view-history" class="hidden flex-col gap-5">
+      <h1 class="text-xl font-bold">History</h1>
+
+      <div class="flex flex-col gap-3">
+        <div>
+          <label for="filter-member" class="mb-2 block text-sm font-medium text-zinc-400">Member</label>
+          <select id="filter-member"
+            class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-base text-zinc-100 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500">
+            <option value="">All members</option>
+          </select>
+        </div>
+        <div>
+          <label for="filter-month" class="mb-2 block text-sm font-medium text-zinc-400">Month</label>
+          <input id="filter-month" type="month"
+            class="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-base text-zinc-100 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500">
+        </div>
+      </div>
+
+      <div id="history-error" class="hidden rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
+        Could not load the history. Try again in a moment.
+      </div>
+
+      <div id="history-list" class="flex flex-col gap-2"></div>
+
+      <div id="history-empty" class="hidden rounded-xl border border-zinc-800 bg-zinc-900/60 p-8 text-center text-sm text-zinc-400">
+        No entries match these filters.
+      </div>
+    </section>
   </main>
+
+  <!-- Bottom navigation -->
+  <nav class="fixed bottom-0 inset-x-0 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur" style="padding-bottom: var(--un-safe-inset-bottom, env(safe-area-inset-bottom, 0px));">
+    <div class="max-w-md mx-auto grid grid-cols-3">
+      <a href="#/" data-nav="home" class="flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-violet-400">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Home
+      </a>
+      <a href="#/add" data-nav="add" class="flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-zinc-500">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+        Add
+      </a>
+      <a href="#/history" data-nav="history" class="flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-zinc-500">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+        History
+      </a>
+    </div>
+  </nav>
 
   <script>
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || '';
     const headers = token ? { 'x-usernode-token': token } : {};
 
-    async function loadLeaderboard() {
-      const res = await fetch('/api/leaderboard', { headers });
-      if (!res.ok) return;
-      const { leaderboard } = await res.json();
-      const el = document.getElementById('leaderboard');
-      if (!leaderboard.length) {
-        el.innerHTML = '<p class="text-center text-zinc-600 text-sm">No presses yet</p>';
-        return;
-      }
-      el.innerHTML = leaderboard.map((r, i) =>
-        '<div class="flex justify-between px-3 py-1 rounded ' + (i === 0 ? 'bg-violet-600/20 text-violet-300' : 'text-zinc-400') + '">' +
-        '<span>' + (i + 1) + '. ' + r.username + '</span>' +
-        '<span class="font-mono">' + r.presses + '</span></div>'
-      ).join('');
-      const total = leaderboard.reduce((s, r) => s + parseInt(r.presses), 0);
-      document.getElementById('count').textContent = total + ' total presses';
+    function money(cents) {
+      const sign = cents < 0 ? '-' : '';
+      const abs = Math.abs(cents);
+      return sign + '$' + (abs / 100).toLocaleString('en-US', {
+        minimumFractionDigits: 2, maximumFractionDigits: 2,
+      });
     }
 
-    document.getElementById('press-btn').addEventListener('click', async () => {
+    function fmtDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // Current month as YYYY-MM in the browser's local time, matching how
+    // the server compares date_trunc('month', NOW()).
+    function currentMonth() {
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+
+    function el(id) { return document.getElementById(id); }
+
+    // ---- Entry rows (shared by Home and History) ----
+    function entryRow(e, withDate) {
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-3 p-4';
+
+      const badge = document.createElement('span');
+      badge.className = e.kind === 'in'
+        ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400'
+        : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-red-400';
+      badge.textContent = e.kind === 'in' ? '+' : '−';
+
+      const mid = document.createElement('div');
+      mid.className = 'min-w-0 flex-1';
+      const name = document.createElement('p');
+      name.className = 'truncate text-sm font-semibold text-zinc-100';
+      name.textContent = e.payer;
+      const sub = document.createElement('p');
+      sub.className = 'truncate text-xs text-zinc-500';
+      sub.textContent = withDate
+        ? (e.note ? e.note + ' · ' + fmtDate(e.created_at) : fmtDate(e.created_at))
+        : (e.note || '');
+      mid.appendChild(name); mid.appendChild(sub);
+
+      const amt = document.createElement('span');
+      amt.className = e.kind === 'in'
+        ? 'shrink-0 text-sm font-semibold text-emerald-400'
+        : 'shrink-0 text-sm font-semibold text-zinc-100';
+      amt.textContent = (e.kind === 'in' ? '+' : '-') + money(e.amount_cents).replace('-', '');
+
+      row.appendChild(badge); row.appendChild(mid); row.appendChild(amt);
+      return row;
+    }
+
+    // ---- Home ----
+    async function loadHome() {
+      el('summary-error').classList.add('hidden');
+      el('summary-cards').classList.add('hidden');
+      el('home-empty').classList.add('hidden');
+      el('latest-list').textContent = '';
       try {
-        const res = await fetch('/api/press', {
+        const res = await fetch('/api/summary', { headers });
+        if (!res.ok) throw new Error('summary ' + res.status);
+        const s = await res.json();
+        el('balance').textContent = money(s.balance_cents);
+        el('month-in').textContent = '+' + money(s.month_in_cents);
+        el('month-out').textContent = '-' + money(s.month_out_cents).replace('-', '');
+
+        if (s.latest.length) {
+          const list = el('latest-list');
+          s.latest.forEach(e => list.appendChild(entryRow(e, true)));
+        } else {
+          el('home-empty').classList.remove('hidden');
+        }
+        el('summary-cards').classList.remove('hidden');
+        el('summary-cards').classList.add('flex');
+      } catch (err) {
+        el('summary-error').classList.remove('hidden');
+      }
+    }
+
+    // ---- Add ----
+    let kind = 'in';
+    function setKind(k) {
+      kind = k;
+      const inBtn = el('kind-in'), outBtn = el('kind-out');
+      inBtn.className = k === 'in'
+        ? 'rounded-lg px-3 py-2.5 text-sm font-semibold bg-violet-600 text-white'
+        : 'rounded-lg px-3 py-2.5 text-sm font-semibold bg-zinc-800 text-zinc-300';
+      outBtn.className = k === 'out'
+        ? 'rounded-lg px-3 py-2.5 text-sm font-semibold bg-violet-600 text-white'
+        : 'rounded-lg px-3 py-2.5 text-sm font-semibold bg-zinc-800 text-zinc-300';
+      inBtn.setAttribute('aria-pressed', String(k === 'in'));
+      outBtn.setAttribute('aria-pressed', String(k === 'out'));
+    }
+    el('kind-in').addEventListener('click', () => setKind('in'));
+    el('kind-out').addEventListener('click', () => setKind('out'));
+
+    el('add-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const errBox = el('form-error');
+      errBox.classList.add('hidden');
+
+      const amount = parseFloat(el('amount').value);
+      const payer = el('payer').value.trim();
+      const note = el('note').value.trim();
+
+      if (!(amount > 0)) {
+        errBox.textContent = 'Enter an amount greater than zero.';
+        errBox.classList.remove('hidden');
+        return;
+      }
+      if (!payer) {
+        errBox.textContent = 'Enter a name.';
+        errBox.classList.remove('hidden');
+        return;
+      }
+
+      const btn = el('save-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/entries', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ kind, amount, payer, note }),
         });
-        if (res.ok) loadLeaderboard();
-        else if (res.status === 401) document.getElementById('count').textContent = 'Sign in to press!';
-      } catch {}
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          errBox.textContent = body.error || 'Could not save the entry. Try again.';
+          errBox.classList.remove('hidden');
+          return;
+        }
+        el('add-form').reset();
+        setKind('in');
+        location.hash = '#/';
+      } catch {
+        errBox.textContent = 'Could not save the entry. Try again.';
+        errBox.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+      }
     });
 
-    loadLeaderboard();
+    // ---- History ----
+    async function loadMembers() {
+      try {
+        const res = await fetch('/api/members', { headers });
+        if (!res.ok) return;
+        const { members } = await res.json();
+        const sel = el('filter-member');
+        const current = sel.value;
+        // Keep the placeholder option first.
+        sel.textContent = '';
+        const all = document.createElement('option');
+        all.value = '';
+        all.textContent = 'All members';
+        sel.appendChild(all);
+        members.forEach(m => {
+          const o = document.createElement('option');
+          o.value = m;
+          o.textContent = m;
+          sel.appendChild(o);
+        });
+        sel.value = current;
+      } catch {}
+    }
+
+    async function loadHistory() {
+      const member = el('filter-member').value;
+      const month = el('filter-month').value;
+      el('history-error').classList.add('hidden');
+      el('history-list').textContent = '';
+      el('history-empty').classList.add('hidden');
+      try {
+        const q = new URLSearchParams();
+        if (member) q.set('member', member);
+        if (month) q.set('month', month);
+        const res = await fetch('/api/entries' + (q.toString() ? '?' + q : ''), { headers });
+        if (!res.ok) throw new Error('entries ' + res.status);
+        const { entries } = await res.json();
+        if (!entries.length) {
+          el('history-empty').classList.remove('hidden');
+          return;
+        }
+        const list = el('history-list');
+        entries.forEach(e => {
+          const card = document.createElement('div');
+          card.className = 'rounded-xl border border-zinc-800 bg-zinc-900/60';
+          card.appendChild(entryRow(e, true));
+          list.appendChild(card);
+        });
+      } catch {
+        el('history-error').classList.remove('hidden');
+      }
+    }
+
+    el('filter-member').addEventListener('change', loadHistory);
+    el('filter-month').addEventListener('change', loadHistory);
+
+    // ---- Routing (hash: #/ home, #/add, #/history) ----
+    const VIEWS = { home: 'view-home', add: 'view-add', history: 'view-history' };
+
+    function route() {
+      const hash = location.hash || '#/';
+      const name = hash === '#/add' ? 'add'
+        : hash === '#/history' ? 'history' : 'home';
+      Object.entries(VIEWS).forEach(([key, id]) => {
+        const v = el(id);
+        v.classList.toggle('hidden', key !== name);
+        v.classList.toggle('flex', key === name);
+      });
+      document.querySelectorAll('[data-nav]').forEach(a => {
+        const active = a.getAttribute('data-nav') === name;
+        // Whole-literal classes only, so the precompiled Tailwind build sees them.
+        a.className = active
+          ? 'flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-violet-400'
+          : 'flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium text-zinc-500';
+      });
+
+      if (name === 'home') loadHome();
+      if (name === 'history') { loadMembers(); loadHistory(); }
+    }
+
+    window.addEventListener('hashchange', route);
+    route();
   </script>
 </body>
 </html>

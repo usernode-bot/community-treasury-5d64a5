@@ -1,27 +1,27 @@
 # Community Treasury
 
-> **Starter template** — this repo was scaffolded by Homeroom Social
-> Vibecoding. Everything in it is placeholder example code until the
-> app's first real feature is built.
+A shared treasury board for the community. Anyone can record money coming in
+(a contribution) or going out (an expense), and everyone can see where the
+treasury stands.
 
-The scaffold is a small working demo that proves the plumbing works:
+## What's in the app
 
-- **Sign-in** — the server verifies the platform-issued user token
-  (an RS256 JWT) on every request, so the app already knows who is
-  using it. No accounts to build.
-- **Database** — the app has its own private Postgres database; the
-  demo stores button presses in a `presses` table.
-- **Live API** — two example routes (`/api/press`,
-  `/api/leaderboard`) read and write through a real Express server.
-- **Styling** — Tailwind CSS, precompiled by `npm run build` during
-  image creation with either Kubernetes/Paketo or standalone Docker.
+- **Home** — the current balance, this month's money in and money out, and
+  the ten latest entries.
+- **Add entry** — record an entry: type (money in / money out), amount,
+  the payer's name, and an optional note.
+- **History** — every entry, newest first, filterable by member and by month.
 
-## Replacing the template
+No login and no wallet: the payer is a name typed on the form. Visitors are
+authenticated only by the Homeroom platform itself, as with every app here.
 
-Open the app on Homeroom, tap **Improve** in the header, and describe
-the app you want in plain English — the template will be replaced with
-your real app. You can also run Claude Code against this repo directly;
-start with `CLAUDE.md`, which carries the app-specific notes and
-points at the platform rules.
+## How it works
 
-Once the real app exists, rewrite this README to describe it.
+- Node/Express server (`server.js`) with its own PostgreSQL database.
+- Entries live in the `entries` table; amounts are stored as **integer
+  cents**, never floats (`amount_cents`).
+- API: `GET /api/summary` (balance, month totals, latest 10),
+  `POST /api/entries`, `GET /api/entries?member=&month=YYYY-MM`,
+  `GET /api/members` (distinct payer names for the history filter).
+- Styling is Tailwind, precompiled by `npm run build` during the image
+  build; the frontend is a single hash-routed page in `public/index.html`.
