@@ -1,4 +1,29 @@
 {
-  "description": "A shared treasury board for the community. Members record contributions and expenses with amount, pa",
-  "secrets": []
+  "description": "A shared treasury board for the community. Members record money in and money out, and everyone can see the balance, this month's totals and the full history.",
+  "secrets": [],
+  "tests": [
+    {
+      "name": "Home shows balance and latest entries",
+      "path": "/",
+      "expectText": "Balance"
+    },
+    {
+      "name": "Add entry form renders",
+      "path": "/#/add",
+      "expectText": "Save entry"
+    },
+    {
+      "name": "History renders with filters",
+      "path": "/#/history",
+      "expectText": "All members"
+    },
+    {
+      "id": "treasury.home",
+      "name": "Home screen with balance, month totals and latest entries",
+      "path": "/",
+      "expectSelector": "#summary-cards:not(.hidden)",
+      "visual": true,
+      "impact": ["server.js", "public/index.html", "styles/**", "tailwind.config.js"]
+    }
+  ]
 }

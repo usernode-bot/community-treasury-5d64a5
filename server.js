@@ -7,6 +7,8 @@ const app = express();
 const port = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const IS_STAGING = process.env.USERNODE_ENV === 'staging';
+
 // The platform signs user-identity tokens with an RSA private key it never
 // shares. Containers get only the PUBLIC half, so this app can verify who a
 // user is but cannot mint an identity — and neither can any other app.
@@ -24,6 +26,12 @@ const APP_AUDIENCE = process.env.USERNODE_APP_ID
 // with `app.get`/`app.post` below) if you deliberately want it public.
 // Everything else requires a valid platform-issued JWT.
 const PUBLIC_API_PATHS = new Set(['/health']);
+
+// GET reads of the treasury board are public, matching this app's "no login"
+// product rule: the balance, the history and the member list are community
+// content anyone who opens the app can see. Only these paths, GET only —
+// recording an entry still requires a valid platform-issued token.
+const PUBLIC_READ_PATHS = new Set(['/api/summary', '/api/entries', '/api/members']);
 
 app.use(express.json());
 
@@ -95,6 +103,7 @@ app.use((req, res, next) => {
   // leak app data to the public internet.
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     if (PUBLIC_API_PATHS.has(req.path)) return next();
+    if (req.method === 'GET' && PUBLIC_READ_PATHS.has(req.path)) return next();
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
   }
   next();
@@ -109,29 +118,134 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 // fresh load.
 app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
-// Button press
-app.post('/api/press', async (req, res) => {
+// ---- Treasury API -------------------------------------------------------
+// Money is stored as integer cents, never floats. `kind` is 'in' (money
+// into the treasury) or 'out' (an expense). Entries are community content:
+// the payer is a free-text name typed on the form, not a platform account.
+
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function parseAmountCents(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  const cents = Math.round(n * 100);
+  if (!Number.isInteger(cents) || cents <= 0 || cents > 100000000) return null;
+  return cents;
+}
+
+// Home screen: current balance, this month's money in / money out, and the
+// ten latest entries.
+app.get('/api/summary', async (_req, res) => {
   try {
-    await pool.query(`
-      INSERT INTO presses (user_id, username) VALUES ($1, $2)
-    `, [req.user.id, req.user.username]);
-    res.json({ ok: true });
+    const [totals, month, latest] = await Promise.all([
+      pool.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN kind = 'in'  THEN amount_cents END), 0) AS in_cents,
+          COALESCE(SUM(CASE WHEN kind = 'out' THEN amount_cents END), 0) AS out_cents
+        FROM entries
+      `),
+      pool.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN kind = 'in'  THEN amount_cents END), 0) AS in_cents,
+          COALESCE(SUM(CASE WHEN kind = 'out' THEN amount_cents END), 0) AS out_cents
+        FROM entries
+        WHERE created_at >= date_trunc('month', NOW())
+      `),
+      pool.query(`
+        SELECT id, kind, amount_cents, payer, note, created_at
+        FROM entries
+        ORDER BY created_at DESC, id DESC
+        LIMIT 10
+      `),
+    ]);
+    res.json({
+      balance_cents: Number(totals.rows[0].in_cents) - Number(totals.rows[0].out_cents),
+      month_in_cents: Number(month.rows[0].in_cents),
+      month_out_cents: Number(month.rows[0].out_cents),
+      latest: latest.rows,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Leaderboard
-app.get('/api/leaderboard', async (_req, res) => {
+// Record an entry. Amount arrives as a decimal dollar number and is stored
+// as integer cents.
+app.post('/api/entries', async (req, res) => {
+  const kind = req.body && req.body.kind;
+  const payer = typeof (req.body && req.body.payer) === 'string'
+    ? req.body.payer.trim() : '';
+  const note = typeof (req.body && req.body.note) === 'string'
+    ? req.body.note.trim() : '';
+  const cents = parseAmountCents(req.body && req.body.amount);
+
+  if (kind !== 'in' && kind !== 'out') {
+    return res.status(400).json({ error: 'Type must be in or out' });
+  }
+  if (cents === null) {
+    return res.status(400).json({ error: 'Amount must be a positive number' });
+  }
+  if (!payer) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+  if (payer.length > 255 || note.length > 500) {
+    return res.status(400).json({ error: 'Name or note is too long' });
+  }
+
   try {
     const { rows } = await pool.query(`
-      SELECT username, COUNT(*) as presses
-      FROM presses
-      GROUP BY username
-      ORDER BY presses DESC
-      LIMIT 50
+      INSERT INTO entries (kind, amount_cents, payer, note)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, kind, amount_cents, payer, note, created_at
+    `, [kind, cents, payer, note]);
+    res.status(201).json({ entry: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// History: every entry, newest first, optionally filtered by payer name
+// (exact, case-insensitive) and/or month ("YYYY-MM").
+app.get('/api/entries', async (req, res) => {
+  const member = typeof req.query.member === 'string' ? req.query.member.trim() : '';
+  const month = typeof req.query.month === 'string' ? req.query.month : '';
+
+  const clauses = [];
+  const params = [];
+  if (member) {
+    params.push(member.toLowerCase());
+    clauses.push(`LOWER(payer) = $${params.length}`);
+  }
+  if (month) {
+    if (!MONTH_RE.test(month)) {
+      return res.status(400).json({ error: 'Month must look like YYYY-MM' });
+    }
+    params.push(month + '-01');
+    clauses.push(`created_at >= date_trunc('month', $${params.length}::date)
+      AND created_at < (date_trunc('month', $${params.length}::date) + INTERVAL '1 month')`);
+  }
+
+  const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : '';
+  try {
+    const { rows } = await pool.query(`
+      SELECT id, kind, amount_cents, payer, note, created_at
+      FROM entries
+      ${where}
+      ORDER BY created_at DESC, id DESC
+    `, params);
+    res.json({ entries: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Distinct payer names, for the history filter dropdown.
+app.get('/api/members', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT payer FROM entries ORDER BY payer
     `);
-    res.json({ leaderboard: rows });
+    res.json({ members: rows.map(r => r.payer) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -176,16 +290,71 @@ app.get('*', (req, res) => {
 
 async function start() {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS presses (
+    CREATE TABLE IF NOT EXISTS entries (
       id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL,
-      username VARCHAR(255) NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW()
+      kind VARCHAR(3) NOT NULL CHECK (kind IN ('in', 'out')),
+      amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+      payer VARCHAR(255) NOT NULL,
+      note VARCHAR(500) NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // The demo `presses` table belonged to the starter template, which this
+  // change replaces; drop it so fresh bootstraps don't carry it forward.
+  await pool.query('DROP TABLE IF EXISTS presses');
+
+  // Staging previews start from a copy of production, but this table is
+  // brand new, so it is empty there. Seed a handful of obviously fake rows
+  // so the home and history screens are reviewable. Fake identities only,
+  // never the visitor. The guard makes it idempotent: staging containers
+  // reboot on every push, and without it the batch would duplicate.
+  if (IS_STAGING) {
+    await pool.query(`
+      INSERT INTO entries (kind, amount_cents, payer, note, created_at)
+      SELECT * FROM (VALUES
+        ('in'::text,  250000, 'Staging demo Alice'::text, 'Monthly contribution'::text, NOW() - INTERVAL '2 months 3 days'),
+        ('out',        12000, 'Staging demo Bob',   'Pizza for game night', NOW() - INTERVAL '1 month 20 days'),
+        ('in',        100000, 'Staging demo Carol', 'Bake sale proceeds',   NOW() - INTERVAL '1 month 5 days'),
+        ('out',        45000, 'Staging demo Alice', 'Board game restock',   NOW() - INTERVAL '10 days'),
+        ('in',         50000, 'Staging demo Bob',   'Membership dues',      NOW() - INTERVAL '6 hours')
+      ) AS seed(kind, amount_cents, payer, note, created_at)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM entries WHERE payer LIKE 'Staging demo %'
+      )
+    `);
+  }
+
   const server = app.listen(port, () => console.log(`Listening on :${port}`));
   // Let Envoy retire idle upstream connections at 60s, with a 15s margin.
   server.keepAliveTimeout = 75_000;
+  return server;
 }
 
-start().catch(err => { console.error(err); process.exit(1); });
+// Graceful shutdown: the container is stopped and replaced on every deploy,
+// so stop accepting connections, give in-flight requests a bounded drain,
+// close the pool, exit. Idempotent — a repeat signal must not double-run.
+const DRAIN_MS = 3000;
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal} received, draining`);
+  try { global.__treasuryServer?.close(() => {}); } catch {}
+  try { global.__treasuryServer?.closeIdleConnections?.(); } catch {}
+  const t = setTimeout(() => global.__treasuryServer?.closeAllConnections?.(), DRAIN_MS);
+  t.unref?.();
+  try {
+    await pool.end();
+  } catch (e) {
+    console.error('[shutdown] pool.end failed', e.message);
+  }
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+start()
+  .then(server => { global.__treasuryServer = server; })
+  .catch(err => { console.error(err); process.exit(1); });
