@@ -25,5 +25,9 @@
       "visual": true,
       "impact": ["server.js", "public/index.html", "styles/**", "tailwind.config.js"]
     }
-  ]
+  ],
+  "icon": {
+    "image": "brand/icon.png",
+    "emoji": "🫙"
+  }
 }
